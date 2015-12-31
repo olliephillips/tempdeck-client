@@ -16,6 +16,8 @@ Run it or build and install a binary in the usual way.
 
 ## Usage
 
+tempdeck-client creates a webserver on localhost:8081 by default. Run it and visit that URI in your web browser.
+
 ```
 tempdeck-client -h
 ```
