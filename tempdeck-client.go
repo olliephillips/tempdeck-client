@@ -4,21 +4,21 @@
 package main
 
 import (
-	"log"
 	"fmt"
-	"os"
-	"os/signal"
-	"net/http"
-	"html/template"
+	"github.com/gorilla/websocket"
 	"github.com/spf13/cobra"
 	"github.com/yosssi/gmq/mqtt"
-    "github.com/yosssi/gmq/mqtt/client"
-	"github.com/gorilla/websocket"
+	"github.com/yosssi/gmq/mqtt/client"
+	"html/template"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
 )
 
 var upgrader = websocket.Upgrader{
-    ReadBufferSize:  1024,
-    WriteBufferSize: 1024,
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
 }
 
 // For cobra command line switches
@@ -31,7 +31,7 @@ var (
 var messages = make(chan string)
 
 // Home handler
-func home(w http.ResponseWriter, req *http.Request){
+func home(w http.ResponseWriter, req *http.Request) {
 	// Quick.Dirty. Don't want external dependencies for the server.
 	const html = `
 <!DOCTYPE html>
@@ -182,108 +182,108 @@ window.onload = function () {
 </html>
 	`
 	t, err := template.New("homepage").Parse(html)
-	
+
 	data := struct {
-		Topic string
+		Topic  string
 		Serial string
 		Broker string
 	}{
-		Topic : "tempdeck/espruino/",
+		Topic:  "tempdeck/espruino/",
 		Serial: serial,
 		Broker: broker,
 	}
-	
+
 	err = t.Execute(w, data)
 	checkError(err)
 }
 
 // Handler/Upgrader/Watcher for websocket connections
-func wsHandler(w http.ResponseWriter, req *http.Request){
+func wsHandler(w http.ResponseWriter, req *http.Request) {
 	conn, _ := upgrader.Upgrade(w, req, nil)
 	for {
 		//Read from channel
-		message:= <-messages
-   		conn.WriteMessage(websocket.TextMessage, []byte(message))
+		message := <-messages
+		conn.WriteMessage(websocket.TextMessage, []byte(message))
 	}
 }
 
-// Create webserver 
-func startHTTPServer(){
+// Create webserver
+func startHTTPServer() {
 	// Define two routes
-	http.HandleFunc("/ws", wsHandler) 
+	http.HandleFunc("/ws", wsHandler)
 	http.HandleFunc("/", home)
 	log.Printf("Starting tempdeck-client app on http://localhost:8081")
 	go http.ListenAndServe("localhost:8081", nil)
 }
 
 // Setup and start MQTT client, put received messages on the channel
-func startMQTT(){
+func startMQTT() {
 	// Set up channel on which to send signal notifications
-    sigc := make(chan os.Signal, 1)
-    signal.Notify(sigc, os.Interrupt, os.Kill)
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc, os.Interrupt, os.Kill)
 
-    cli := client.New(&client.Options{
-        // Define the processing of the error handler
-        ErrorHandler: func(err error) {
-            fmt.Println(err)
-        },
-    })	
-    defer cli.Terminate()
+	cli := client.New(&client.Options{
+		// Define the processing of the error handler
+		ErrorHandler: func(err error) {
+			fmt.Println(err)
+		},
+	})
+	defer cli.Terminate()
 
-    // Connect
-    err := cli.Connect(&client.ConnectOptions{
-        Network:  "tcp",
-        Address:  broker + ":1883",
-        ClientID: []byte("example-client"),
-    })
-   	checkError(err)
-	
-    // Subscribe to our topic
-    err = cli.Subscribe(&client.SubscribeOptions{
-        SubReqs: []*client.SubReq{
-            &client.SubReq{
-                TopicFilter: []byte("tempdeck/espruino/" + serial),
-                QoS:         mqtt.QoS0,
-                // Message handler
-                Handler: func(topicName, message []byte) {
-					// Put the message in the "messages" channel	
-					messages <- string(message) 
-                },
-            },
-        },
-    })
-    checkError(err)
-	
+	// Connect
+	err := cli.Connect(&client.ConnectOptions{
+		Network:  "tcp",
+		Address:  broker + ":1883",
+		ClientID: []byte("example-client"),
+	})
+	checkError(err)
+
+	// Subscribe to our topic
+	err = cli.Subscribe(&client.SubscribeOptions{
+		SubReqs: []*client.SubReq{
+			&client.SubReq{
+				TopicFilter: []byte("tempdeck/espruino/" + serial),
+				QoS:         mqtt.QoS0,
+				// Message handler
+				Handler: func(topicName, message []byte) {
+					// Put the message in the "messages" channel
+					messages <- string(message)
+				},
+			},
+		},
+	})
+	checkError(err)
+
 	// Wait for receiving a signal
-    <-sigc
+	<-sigc
 
-    // Disconnect the Network Connection
-    if err := cli.Disconnect(); err != nil {
-        panic(err)
-    }
+	// Disconnect the Network Connection
+	if err := cli.Disconnect(); err != nil {
+		panic(err)
+	}
 }
 
 // Utility function for error checking
-func checkError(err error){
+func checkError(err error) {
 	if err != nil {
 		log.Fatal(err)
 	}
-}	
+}
 
 // Start, uses Cobra to handle command line switches
 func main() {
 	cmd := &cobra.Command{
-				Use:   "tempdeck-client",
-				Short: "tempdeck-client is an MQTT client built specifically for monitoring Espruino powered devices running tempdeck",
-				Run: func(cmd *cobra.Command, args []string) {		
-					// Start web server
-					go startHTTPServer() 
-					
-					// Create MQTT client
-					startMQTT()
-				},
-			}
+		Use:   "tempdeck-client",
+		Short: "tempdeck-client is an MQTT client built specifically for monitoring Espruino powered devices running tempdeck",
+		Run: func(cmd *cobra.Command, args []string) {
+			// Start web server
+			go startHTTPServer()
+
+			// Create MQTT client
+			startMQTT()
+		},
+	}
 	cmd.Flags().StringVarP(&broker, "broker", "b", "test.mosquitto.org", "MQTT broker")
 	cmd.Flags().StringVarP(&serial, "serial", "s", "18fe34da-fa4a", "Serial number of your Espruino board")
 	cmd.Execute()
-}	
+}
